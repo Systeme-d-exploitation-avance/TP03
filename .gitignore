@@ -1,0 +1,6 @@
+# ignore build folder and its contents
+build/
+cmake-build-debug/
+
+# ignore .DS_Store files
+.DS_Store
