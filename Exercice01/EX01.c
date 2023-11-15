@@ -26,6 +26,8 @@ struct ThreadResult
 
 // Array to store results from each thread
 struct ThreadResult threadResults[NUM_THREADS];
+// Mutex to protect the result array
+pthread_mutex_t resultMutex = PTHREAD_MUTEX_INITIALIZER;
 
 #define USAGE "USAGE: programme qui initialise un grand tableau d\\’entiers avec des valeurs aléatoires, recherche ensuite le minimum et le maximum du tableau et affiche le résultat"
 #define USAGE_SYNTAX "[OPTIONS] No parameters needed"
@@ -103,12 +105,6 @@ static struct option binary_opts[] =
 const char *binary_optstr = "hvi:o:";
 
 /**
- * Initialize the array with random values
- *
- * \return void
- */
-
-/**
  * Find the min and max values of the array
  * and store them in the min and max variables
  *
@@ -122,22 +118,31 @@ void *findMinMaxThread(void *arg)
     int start = thread_id * chunk_size;                      // Start index of the chunk
     int end = (thread_id == NUM_THREADS - 1) ? SIZE : (thread_id + 1) * chunk_size; // End index of the chunk
 
-    struct ThreadResult *result = &threadResults[thread_id]; // Result of the thread
-    result->min = tab[start];                                // Initialize min and max with the first value of the chunk
-    result->max = tab[start];
+    struct ThreadResult result;                              // Result of the thread
+    result.min = tab[start];                                 // Initialize min and max with the first value of the chunk
+    result.max = tab[start];
 
     // Find min and max values of the chunk and store them in the result
     for (int i = start + 1; i < end; i++)
     {
-        if (tab[i] < result->min)
+        if (tab[i] < result.min)
         {
-            result->min = tab[i];
+            result.min = tab[i];
         }
-        if (tab[i] > result->max)
+        if (tab[i] > result.max)
         {
-            result->max = tab[i];
+            result.max = tab[i];
         }
     }
+
+    // Lock the mutex before updating the global result variables
+    pthread_mutex_lock(&resultMutex);
+
+    // Update global result variables
+    threadResults[thread_id] = result;
+
+    // Unlock the mutex
+    pthread_mutex_unlock(&resultMutex);
 
     return NULL;
 }
@@ -241,6 +246,7 @@ int main(int argc, char **argv)
     double elapsedTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
 
     // Display results
+    printf("Number of threads: %d\n", NUM_THREADS);
     printf("Minimum value: %d\n", finalResult.min);
     printf("Maximum value: %d\n", finalResult.max);
     printf("Time taken: %f seconds\n", elapsedTime);
