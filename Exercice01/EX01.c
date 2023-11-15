@@ -5,15 +5,27 @@
 #include <getopt.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 #define STDOUT 1
 #define STDERR 2
 
 #define MAX_PATH_LENGTH 4096
 
-#define SIZE (int)1e8
+#define SIZE (int)1e8 // Size of the array
+#define NUM_THREADS 1 // Number of threads to use, must be a divisor of SIZE
 
-int tab[SIZE];
+int tab[SIZE]; // Array to store random values
+
+// Structure to store min and max values
+struct ThreadResult
+{
+    int min;
+    int max;
+};
+
+// Array to store results from each thread
+struct ThreadResult threadResults[NUM_THREADS];
 
 #define USAGE "USAGE: programme qui initialise un grand tableau d\\’entiers avec des valeurs aléatoires, recherche ensuite le minimum et le maximum du tableau et affiche le résultat"
 #define USAGE_SYNTAX "[OPTIONS] No parameters needed"
@@ -95,33 +107,52 @@ const char *binary_optstr = "hvi:o:";
  *
  * \return void
  */
-void initializeArray() {
-    for (int i = 0; i < SIZE; i++) {
-        tab[i] = rand(); // Initialize with random values
-    }
-}
 
 /**
  * Find the min and max values of the array
  * and store them in the min and max variables
- * 
+ *
  * \return void
-*/
-void findMinMax() {
-    int min = tab[0];
-    int max = tab[0];
+ */
+void *findMinMaxThread(void *arg)
+{
+    int thread_id = *((int *)arg); // Get thread ID
 
-    for (int i = 1; i < SIZE; i++) {
-        if (tab[i] < min) {
-            min = tab[i];
+    int chunk_size = SIZE / NUM_THREADS;                     // Size of the chunk to process
+    int start = thread_id * chunk_size;                      // Start index of the chunk
+    int end = (thread_id == NUM_THREADS - 1) ? SIZE : (thread_id + 1) * chunk_size; // End index of the chunk
+
+    struct ThreadResult *result = &threadResults[thread_id]; // Result of the thread
+    result->min = tab[start];                                // Initialize min and max with the first value of the chunk
+    result->max = tab[start];
+
+    // Find min and max values of the chunk and store them in the result
+    for (int i = start + 1; i < end; i++)
+    {
+        if (tab[i] < result->min)
+        {
+            result->min = tab[i];
         }
-        if (tab[i] > max) {
-            max = tab[i];
+        if (tab[i] > result->max)
+        {
+            result->max = tab[i];
         }
     }
 
-    printf("Minimum value: %d\n", min);
-    printf("Maximum value: %d\n", max);
+    return NULL;
+}
+
+/**
+ * Initialize the array with random values
+ *
+ * \return void
+*/
+void initArray()
+{
+    for (int i = 0; i < SIZE; i++)
+    {
+        tab[i] = rand();
+    }
 }
 
 /**
@@ -158,21 +189,60 @@ int main(int argc, char **argv)
     }
 
     // Business logic
-    
-    // Initialize array with random values
-    initializeArray();
 
-    // Measure time taken to find min and max
-    struct timeval start, end;
+    // Initialize the array with random values
+    initArray();
+
+    // Measure time taken to find min and max using threads
+    struct timeval start, end;  
+
+    // Get current time and store it in start
     gettimeofday(&start, NULL);
 
-    // Find and display min and max
-    findMinMax();
+    // Thread IDs
+    pthread_t threads[NUM_THREADS]; // Array of threads
+    int thread_ids[NUM_THREADS];    // Array of thread IDs
+
+    // Create threads
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        thread_ids[i] = i;  // Set thread ID
+        pthread_create(&threads[i], NULL, findMinMaxThread, &thread_ids[i]); // Create thread
+    }
+
+    // Wait for threads to finish
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        pthread_join(threads[i], NULL);
+    }
+
+    // Combine results from all threads
+    struct ThreadResult finalResult;
+    finalResult.min = threadResults[0].min;
+    finalResult.max = threadResults[0].max;
+
+    // Find min and max values of all threads and store them in the final result
+    for (int i = 1; i < NUM_THREADS; i++)
+    {
+        if (threadResults[i].min < finalResult.min)
+        {
+            finalResult.min = threadResults[i].min;
+        }
+        if (threadResults[i].max > finalResult.max)
+        {
+            finalResult.max = threadResults[i].max;
+        }
+    }
+
+    // Get current time and calculate elapsed time
     gettimeofday(&end, NULL);
 
     // Calculate the time taken in seconds
     double elapsedTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
 
+    // Display results
+    printf("Minimum value: %d\n", finalResult.min);
+    printf("Maximum value: %d\n", finalResult.max);
     printf("Time taken: %f seconds\n", elapsedTime);
 
     return EXIT_SUCCESS;
